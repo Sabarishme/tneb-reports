@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TNEB Peak Demand Reports</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #111; min-height: 100vh; }
+  .topbar { background: #1a1a2e; color: #fff; padding: 1rem 1.5rem; display: flex; align-items: center; gap: 12px; }
+  .topbar h1 { font-size: 18px; font-weight: 500; }
+  .topbar span { font-size: 12px; opacity: 0.6; margin-left: auto; }
+  .container { max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+  .stat { background: #fff; border-radius: 10px; padding: 1rem 1.25rem; border: 1px solid #e5e5e5; }
+  .stat-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 600; color: #1a1a2e; }
+  .controls { display: flex; gap: 10px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .controls input { flex: 1; min-width: 160px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; background: #fff; outline: none; }
+  .controls input:focus { border-color: #4f46e5; }
+  .controls select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; background: #fff; outline: none; }
+  .month-label { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.06em; margin: 1.25rem 0 0.6rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 0.5rem; }
+  .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; padding: 1rem; text-decoration: none; color: inherit; display: block; transition: box-shadow 0.15s, border-color 0.15s; }
+  .card:hover { border-color: #4f46e5; box-shadow: 0 2px 12px rgba(79,70,229,0.08); }
+  .card-icon { font-size: 26px; margin-bottom: 8px; }
+  .card-date { font-size: 14px; font-weight: 600; color: #1a1a2e; }
+  .card-day { font-size: 12px; color: #888; margin-top: 2px; }
+  .badge { display: inline-block; font-size: 11px; margin-top: 8px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+  .badge-today { background: #ede9fe; color: #4f46e5; }
+  .badge-pdf { background: #f0fdf4; color: #16a34a; }
+  .empty { text-align: center; padding: 3rem; color: #aaa; font-size: 14px; }
+  .footer { text-align: center; font-size: 12px; color: #aaa; padding: 2rem 1rem; border-top: 1px solid #eee; margin-top: 2rem; }
+  @media (max-width: 480px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat:last-child { grid-column: span 2; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>⚡ TNEB Peak Demand Reports</h1>
+  </div>
+  <span>Tamil Nadu SLDC — Daily Archive</span>
+</div>
+
+<div class="container">
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Total reports</div>
+      <div class="stat-value" id="total">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Latest report</div>
+      <div class="stat-value" id="latest" style="font-size:15px; padding-top:5px;">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">This month</div>
+      <div class="stat-value" id="thismonth">0</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="search" placeholder="🔍  Search by date e.g. 2026-06" />
+    <select id="sort">
+      <option value="desc">Newest first</option>
+      <option value="asc">Oldest first</option>
+    </select>
+  </div>
+
+  <div id="content"></div>
+
+  <div class="footer">
+    Source: <a href="https://tnebsldc.org" target="_blank">tnebsldc.org</a> &nbsp;·&nbsp;
+    Auto-archived daily &nbsp;·&nbsp;
+    <a href="https://github.com/YOUR_USERNAME/tneb-reports" target="_blank">GitHub Repo</a>
+  </div>
+
+</div>
+
+<script>
+const GITHUB_USER = "YOUR_USERNAME";
+const GITHUB_REPO = "tneb-reports";
+const BRANCH = "main";
+
+const BASE_RAW = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${BRANCH}/pdfs/`;
+const API_URL = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/pdfs`;
+
+const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const today = new Date().toISOString().split('T')[0];
+const thisMonth = today.substring(0, 7);
+
+let allFiles = [];
+
+function getDayName(dateStr) {
+  return days[new Date(dateStr + 'T12:00:00').getDay()];
+}
+
+function getMonthLabel(dateStr) {
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+}
+
+function updateStats() {
+  document.getElementById('total').textContent = allFiles.length;
+  document.getElementById('thismonth').textContent = allFiles.filter(f => f.date.startsWith(thisMonth)).length;
+  const sorted = [...allFiles].sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById('latest').textContent = sorted[0]?.date || '—';
+}
+
+function render() {
+  const q = document.getElementById('search').value.toLowerCase().trim();
+  const sort = document.getElementById('sort').value;
+
+  let files = allFiles.filter(f => f.date.includes(q));
+  files = sort === 'desc'
+    ? files.sort((a, b) => b.date.localeCompare(a.date))
+    : files.sort((a, b) => a.date.localeCompare(b.date));
+
+  const content = document.getElementById('content');
+
+  if (files.length === 0) {
+    content.innerHTML = `<div class="empty">📭 No reports found${q ? ` for "${q}"` : ''}.</div>`;
+    return;
+  }
+
+  let html = '';
+  let lastMonth = '';
+  let openGrid = false;
+
+  files.forEach(f => {
+    const month = getMonthLabel(f.date);
+    if (month !== lastMonth) {
+      if (openGrid) html += '</div>';
+      html += `<div class="month-label">${month}</div><div class="grid">`;
+      openGrid = true;
+      lastMonth = month;
+    }
+    const isToday = f.date === today;
+    html += `
+      <a class="card" href="${f.url}" target="_blank" rel="noopener">
+        <div class="card-icon">📄</div>
+        <div class="card-date">${f.date}</div>
+        <div class="card-day">${getDayName(f.date)}</div>
+        <span class="badge ${isToday ? 'badge-today' : 'badge-pdf'}">${isToday ? '⭐ Today' : 'PDF'}</span>
+      </a>`;
+  });
+
+  if (openGrid) html += '</div>';
+  content.innerHTML = html;
+}
+
+async function loadFiles() {
+  document.getElementById('content').innerHTML = '<div class="empty">Loading reports...</div>';
+  try {
+    const res = await fetch(API_URL);
+    if (!res.ok) throw new Error('GitHub API error');
+    const data = await res.json();
+    allFiles = data
+      .filter(f => f.name.startsWith('peakdet_') && f.name.endsWith('.pdf'))
+      .map(f => {
+        const date = f.name.replace('peakdet_', '').replace('.pdf', '');
+        return { date, url: BASE_RAW + f.name };
+      });
+    updateStats();
+    render();
+  } catch (e) {
+    document.getElementById('content').innerHTML =
+      '<div class="empty">⚠️ Could not load reports. Make sure GitHub repo is set up correctly.</div>';
+  }
+}
+
+document.getElementById('search').addEventListener('input', render);
+document.getElementById('sort').addEventListener('change', render);
+
+loadFiles();
+</script>
+</body>
+</html>

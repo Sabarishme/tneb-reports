@@ -1,0 +1,33 @@
+name: Download TNEB Daily Report
+
+on:
+  schedule:
+    - cron: '30 1 * * *'  # Runs every day at 7:00 AM IST (1:30 AM UTC)
+  workflow_dispatch:        # Also allows manual trigger from GitHub
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Download PDF
+        run: python download.py
+
+      - name: Commit and push if PDF downloaded
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pdfs/
+          git diff --cached --quiet || git commit -m "Add report $(date +'%Y-%m-%d')"
+          git push
